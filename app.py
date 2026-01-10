@@ -1,9 +1,9 @@
-import streamlit as st
+import streamlit as st 
 import os
 import requests
 import PyPDF2
-import pandas as pd
 from datetime import datetime
+import random
 
 # -----------------------------
 # CONFIG
@@ -15,57 +15,98 @@ if not OPENROUTER_API_KEY:
     st.error("⚠️ OPENROUTER_API_KEY missing")
     st.stop()
 
+KNOWLEDGE_FILE = "knowledge.txt"
+MAX_CONTEXT = 4500
+FALLBACK_MESSAGES = [
+    "Hmm, I’m not sure about that, but I can help you figure it out!",
+    "Good question! I don’t have that info yet, but here’s something useful…",
+    "I don’t know exactly, but let me give you a tip that might help!",
+    "That’s tricky! Let’s explore together."
+]
+
+FUN_ENDINGS = [
+    "😎 Hope that helps!",
+    "🔥 Did you know this?",
+    "🤔 Interesting, right?",
+    "✨ Just a tip!"
+]
+
 # -----------------------------
 # PAGE CONFIG
 # -----------------------------
 st.set_page_config(
-    page_title="ASK ANYTHING ABOUT BILAL",
+    page_title="CHAT WITH ASPIRE SYSTEM",
     layout="centered"
 )
 
 # -----------------------------
-# SECRET ADMIN URL
-# -----------------------------
-query_params = st.query_params
-IS_ADMIN_PAGE = query_params.get("admin") == "1"
-
-# -----------------------------
-# HEADER
+# FIN-STYLE CSS
 # -----------------------------
 st.markdown("""
 <style>
+.chat-container {
+    max-width: 700px;
+    margin: auto;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 10px;
+    max-height: 600px;
+    overflow-y: auto;
+}
 .chat-header {
     background: linear-gradient(90deg, #4285f4, #5a95f5);
-    padding: 14px;
+    padding: 15px;
     color: white;
-    font-size: 18px;
     font-weight: bold;
-    border-radius: 10px;
+    font-size: 18px;
     text-align: center;
+    border-radius: 10px;
+    margin-bottom: 10px;
 }
+div[data-testid="stChatMessage"][data-role="user"] > div {
+    background-color: #0b93f6;
+    color: white;
+    border-radius: 20px;
+    padding: 10px 15px;
+    margin: 5px 0;
+    max-width: 75%;
+}
+div[data-testid="stChatMessage"][data-role="assistant"] > div {
+    background-color: #e5e5ea;
+    color: black;
+    border-radius: 20px;
+    padding: 10px 15px;
+    margin: 5px 0;
+    max-width: 75%;
+}
+.stTextInput>div>div>input {
+    border-radius: 20px;
+    padding: 10px 15px;
+}
+div[data-role="user"]::before { content: "👤"; margin-right: 5px; }
+div[data-role="assistant"]::before { content: "🤖"; margin-right: 5px; }
 </style>
-<div class="chat-header">CHAT WITH NEXTGEN</div>
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# FILE CONFIG
-# -----------------------------
-KNOWLEDGE_FILE = "knowledge.txt"
-MAX_CONTEXT = 4500
-
-# -----------------------------
-# SESSION STATE
+# SESSION STATE INITIALIZATION
 # -----------------------------
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Hi! What can I help you with?"}
-    ]
+    st.session_state.messages = []
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 if "admin_unlocked" not in st.session_state:
     st.session_state.admin_unlocked = False
 
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+# Add greeting only once
+if len(st.session_state.messages) == 0:
+    st.session_state.messages.append(
+        {"role": "assistant", "content": "Hi! I’m the Aspire System Assistant 🤖. Ask me anything about IGCSE and A Levels!"}
+    )
 
 # -----------------------------
 # LOAD KNOWLEDGE
@@ -76,120 +117,122 @@ if os.path.exists(KNOWLEDGE_FILE):
         knowledge = f.read()
 
 # -----------------------------
-# ADMIN PANEL (SECRET URL)
+# ADMIN PANEL
 # -----------------------------
+IS_ADMIN_PAGE = "admin" in st.query_params
+
 if IS_ADMIN_PAGE:
     st.sidebar.header("🔐 Admin Panel")
-
-    if st.session_state.admin_unlocked:
-        st.sidebar.success("Admin Unlocked")
+    if not st.session_state.admin_unlocked:
+        pwd_input = st.sidebar.text_input("Enter admin password", type="password")
+        if st.sidebar.button("Unlock Admin"):
+            if pwd_input == ADMIN_PASSWORD:
+                st.session_state.admin_unlocked = True
+                st.sidebar.success("Admin unlocked!")
+                st.experimental_rerun()
+            else:
+                st.sidebar.error("Wrong password!")
     else:
-        st.sidebar.warning("Admin Locked")
-        st.sidebar.markdown("**Type password in chat to unlock**")
-
-    uploaded_pdfs = st.sidebar.file_uploader(
-        "Upload PDF Knowledge",
-        type="pdf",
-        accept_multiple_files=True,
-        disabled=not st.session_state.admin_unlocked
-    )
-
-    text_knowledge = st.sidebar.text_area(
-        "Add Training Text",
-        height=150,
-        placeholder="Paste custom knowledge here...",
-        disabled=not st.session_state.admin_unlocked
-    )
-
-    if st.sidebar.button("💾 Save Knowledge", disabled=not st.session_state.admin_unlocked):
-        combined_text = ""
-
-        if uploaded_pdfs:
-            for file in uploaded_pdfs:
-                reader = PyPDF2.PdfReader(file)
-                for page in reader.pages:
-                    combined_text += page.extract_text() or ""
-
-        if text_knowledge.strip():
-            combined_text += "\n\n" + text_knowledge.strip()
-
-        combined_text = combined_text[:MAX_CONTEXT]
-
-        if combined_text.strip():
-            with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
-                f.write(combined_text)
-            st.sidebar.success("✅ Knowledge saved")
-        else:
-            st.sidebar.warning("⚠️ No content to save")
+        st.sidebar.success("Admin Unlocked")
+        uploaded_pdfs = st.sidebar.file_uploader(
+            "Upload PDF Knowledge", type="pdf", accept_multiple_files=True
+        )
+        text_knowledge = st.sidebar.text_area(
+            "Add Training Text", height=150, placeholder="Paste custom knowledge here..."
+        )
+        if st.sidebar.button("💾 Save Knowledge"):
+            combined_text = ""
+            if uploaded_pdfs:
+                for file in uploaded_pdfs:
+                    reader = PyPDF2.PdfReader(file)
+                    for page in reader.pages:
+                        try:
+                            combined_text += page.extract_text() or ""
+                        except:
+                            continue
+            if text_knowledge.strip():
+                combined_text += "\n\n" + text_knowledge.strip()
+            combined_text = combined_text[:MAX_CONTEXT]
+            if combined_text.strip():
+                with open(KNOWLEDGE_FILE, "w", encoding="utf-8") as f:
+                    f.write(combined_text)
+                st.sidebar.success("✅ Knowledge saved")
+            else:
+                st.sidebar.warning("⚠️ No content to save")
 
 # -----------------------------
-# CHAT DISPLAY
+# CHAT DISPLAY FUNCTION
 # -----------------------------
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+def render_chat():
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    st.markdown('<div class="chat-header">CHAT WITH ASPIRE SYSTEM</div>', unsafe_allow_html=True)
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # -----------------------------
 # CHAT INPUT
 # -----------------------------
-user_input = st.chat_input("Message...")
+user_input = st.chat_input("Ask the Aspire System Assistant anything about IGCSE & A Levels...")
 
 if user_input:
-    # 🔐 ADMIN UNLOCK
-    if IS_ADMIN_PAGE and user_input.strip() == ADMIN_PASSWORD:
-        st.session_state.admin_unlocked = True
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "🔐 Admin panel unlocked."
-        })
-        st.stop()
-
+    # Append user message
     st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
+    st.session_state.chat_history.append((user_input, "", datetime.now()))
 
-    if not knowledge:
-        bot_reply = "⚠️ No knowledge uploaded yet."
-    else:
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json"
-        }
+    # Prepare context for API
+    MAX_CONTEXT_CHARS = 2000
+    recent_chat_text = ""
+    for u, b, _ in reversed(st.session_state.chat_history):
+        pair = f"User: {u}\nBot: {b}\n"
+        if len(recent_chat_text) + len(pair) > MAX_CONTEXT_CHARS:
+            break
+        recent_chat_text = pair + recent_chat_text
 
-        payload = {
-            "model": "nvidia/nemotron-3-nano-30b-a3b:free",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "Answer SHORT (1–2 sentences) ONLY using the document. "
-                        "If the answer is not present, reply exactly: Information not available."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"Document:\n{knowledge}\n\nQuestion:\n{user_input}"
-                }
-            ],
-            "max_output_tokens": 80,
-            "temperature": 0.2
-        }
+    prompt_content = ""
+    if knowledge.strip():
+        prompt_content += f"Document:\n{knowledge}\n\n"
+    prompt_content += f"Recent chat:\n{recent_chat_text}\n\nQuestion:\n{user_input}"
 
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                try:
-                    res = requests.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers=headers,
-                        json=payload,
-                        timeout=30
-                    )
-                    data = res.json()
-                    bot_reply = data["choices"][0]["message"]["content"]
-                except Exception as e:
-                    bot_reply = f"⚠️ Error: {e}"
+    payload = {
+        "model": "nvidia/nemotron-3-nano-30b-a3b:free",
+        "messages": [
+            {"role": "system",
+             "content": (
+                 "You are the Aspire System Assistant. "
+                 "Answer concisely using the document if possible. "
+                 "If the information is missing, respond in a helpful, friendly, or entertaining way. "
+                 "Never reply empty or 'Information not available'. Always engage the user."
+             )
+             },
+            {"role": "user", "content": prompt_content}
+        ],
+        "max_output_tokens": 150,
+        "temperature": 0.4
+    }
 
-                st.markdown(bot_reply)
+    # Call OpenRouter API
+    try:
+        res = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=30
+        )
+        data = res.json()
+        bot_reply = data["choices"][0]["message"]["content"].strip()
+        if not bot_reply:
+            bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
+    except Exception:
+        bot_reply = random.choice(FALLBACK_MESSAGES) + " " + random.choice(FUN_ENDINGS)
 
+    # Append bot reply
     st.session_state.messages.append({"role": "assistant", "content": bot_reply})
-    st.session_state.chat_history.append((user_input, bot_reply, datetime.now()))
+    st.session_state.chat_history[-1] = (user_input, bot_reply, datetime.now())
+
+# Finally render chat **once**, after all updates
+render_chat()
