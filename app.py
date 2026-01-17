@@ -20,9 +20,9 @@ KNOWLEDGE_FILE = "knowledge.txt"
 MAX_CONTEXT = 4500
 
 FALLBACK_MESSAGES = [
-    "I’m not completely sure, but I’ll try to help you.",
+    "I'm not completely sure, but I'll try to help you.",
     "Let me guide you with the available information.",
-    "That’s a good question. Here’s what I can tell you."
+    "That's a good question. Here's what I can tell you."
 ]
 
 # -----------------------------
@@ -94,6 +94,10 @@ div[data-testid="stChatMessage"][data-role="user"] > div {
     border-radius: 999px !important;
     padding: 12px 16px !important;
 }
+.stChatInput {
+    max-width: 420px !important;
+    margin: auto !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -109,7 +113,7 @@ if "chat_history" not in st.session_state:
 if "admin_unlocked" not in st.session_state:
     st.session_state.admin_unlocked = False
 
-# Greeting (once)
+# Initial greeting (only once when empty)
 if len(st.session_state.messages) == 0:
     st.session_state.messages.append({
         "role": "assistant",
@@ -188,6 +192,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Display all messages (both user and assistant)
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -208,14 +213,20 @@ st.markdown("""
 user_input = st.chat_input("Enter your message...")
 
 if user_input:
+    # Display user message immediately
+    with st.chat_message("user"):
+        st.markdown(user_input)
+    
+    # Add to messages
     st.session_state.messages.append({"role": "user", "content": user_input})
-    st.session_state.chat_history.append((user_input, "", datetime.now()))
-
+    
+    # Prepare knowledge prompt
     prompt = ""
     if knowledge.strip():
         prompt += f"Hospital Knowledge:\n{knowledge}\n\n"
     prompt += f"Question:\n{user_input}"
-
+    
+    # Generate assistant response
     payload = {
         "model": "nvidia/nemotron-3-nano-30b-a3b:free",
         "messages": [
@@ -223,15 +234,16 @@ if user_input:
                 "role": "system",
                 "content": (
                     "You are a hospital customer support chatbot. "
-                    "Respond politely, clearly, and professionally."
+                    "Respond politely, clearly, and professionally. "
+                    "When presenting tabular data (like doctor schedules), use proper markdown formatting with clear headers and alignment."
                 )
             },
             {"role": "user", "content": prompt}
         ],
-        "max_output_tokens": 180,
+        "max_output_tokens": 300,
         "temperature": 0.4
     }
-
+    
     try:
         res = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -246,11 +258,17 @@ if user_input:
         bot_reply = data["choices"][0]["message"]["content"].strip()
         if not bot_reply:
             bot_reply = random.choice(FALLBACK_MESSAGES)
-    except:
+    except Exception as e:
+        print(f"Error: {e}")
         bot_reply = random.choice(FALLBACK_MESSAGES)
-
+    
+    # Display assistant message with typing effect
     with st.chat_message("assistant"):
         animated = typing_effect(bot_reply)
-
+    
+    # Add assistant message to history
     st.session_state.messages.append({"role": "assistant", "content": animated})
-    st.session_state.chat_history[-1] = (user_input, animated, datetime.now())
+    st.session_state.chat_history.append((user_input, animated, datetime.now()))
+    
+    # Force rerun to update UI
+    st.rerun()
