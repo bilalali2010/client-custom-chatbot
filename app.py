@@ -206,7 +206,7 @@ if "loaded_history" not in st.session_state:
     st.session_state.loaded_history = True
 
 # -----------------------------
-# ADMIN PANEL
+# ADMIN PANEL (Hidden - only accessible via /?admin=true)
 # -----------------------------
 IS_ADMIN_PAGE = "admin" in st.query_params
 
@@ -315,6 +315,9 @@ if IS_ADMIN_PAGE:
             st.sidebar.caption(f"Characters: {len(knowledge)}")
         else:
             st.sidebar.warning("No knowledge data loaded.")
+else:
+    # Regular chat interface (without admin link)
+    pass
 
 # -----------------------------
 # TYPING EFFECT
@@ -363,155 +366,148 @@ def format_simple_doctor_info(text):
     return result
 
 # -----------------------------
-# CHAT RENDER
+# CHAT RENDER (Only show if not admin page)
 # -----------------------------
-st.markdown("""
-<div class="chat-container">
-    <div class="chat-header">
-        <h4>Chat with Hospital Assistant</h4>
-        <small>🟢 We are online!</small>
+if not IS_ADMIN_PAGE:
+    st.markdown("""
+    <div class="chat-container">
+        <div class="chat-header">
+            <h4>Chat with Hospital Assistant</h4>
+            <small>🟢 We are online!</small>
+        </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-# Display all messages (both user and assistant)
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        # Format the content if it's from assistant and contains doctor info
-        if msg["role"] == "assistant" and ('Doctor' in msg["content"] or 'Dr.' in msg["content"]):
-            formatted_content = format_simple_doctor_info(msg["content"])
-            if '<div class="doctor-schedule">' in formatted_content:
-                st.markdown(formatted_content, unsafe_allow_html=True)
+    # Display all messages (both user and assistant)
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            # Format the content if it's from assistant and contains doctor info
+            if msg["role"] == "assistant" and ('Doctor' in msg["content"] or 'Dr.' in msg["content"]):
+                formatted_content = format_simple_doctor_info(msg["content"])
+                if '<div class="doctor-schedule">' in formatted_content:
+                    st.markdown(formatted_content, unsafe_allow_html=True)
+                else:
+                    st.markdown(msg["content"])
             else:
                 st.markdown(msg["content"])
-        else:
-            st.markdown(msg["content"])
 
-# Quick replies (static demo)
-st.markdown("""
-<div style="max-width:420px;margin:auto;padding:8px">
-    <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">🏥 Book Appointment</span>
-    <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">👨‍⚕️ Doctors Schedule</span>
-    <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">🧪 Lab Reports</span>
-    <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">📞 Contact Hospital</span>
-</div>
-""", unsafe_allow_html=True)
+    # Quick replies (static demo)
+    st.markdown("""
+    <div style="max-width:420px;margin:auto;padding:8px">
+        <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">🏥 Book Appointment</span>
+        <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">👨‍⚕️ Doctors Schedule</span>
+        <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">🧪 Lab Reports</span>
+        <span class="quick-reply" onclick="this.style.backgroundColor='#2563eb';this.style.color='white';">📞 Contact Hospital</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Add some JavaScript for quick reply clicks
-st.markdown("""
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const quickReplies = document.querySelectorAll('.quick-reply');
-    quickReplies.forEach(reply => {
-        reply.addEventListener('click', function() {
-            const text = this.textContent.replace(/[🏥👨‍⚕️🧪📞]/g, '').trim();
-            const chatInput = document.querySelector('.stChatInput textarea');
-            if (chatInput) {
-                chatInput.value = text;
-                chatInput.dispatchEvent(new Event('input', { bubbles: true }));
-                
-                // Trigger send (simulate Enter key)
-                setTimeout(() => {
-                    const sendButton = document.querySelector('.stChatInput button');
-                    if (sendButton) sendButton.click();
-                }, 100);
-            }
+    # Add some JavaScript for quick reply clicks
+    st.markdown("""
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const quickReplies = document.querySelectorAll('.quick-reply');
+        quickReplies.forEach(reply => {
+            reply.addEventListener('click', function() {
+                const text = this.textContent.replace(/[🏥👨‍⚕️🧪📞]/g, '').trim();
+                const chatInput = document.querySelector('.stChatInput textarea');
+                if (chatInput) {
+                    chatInput.value = text;
+                    chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    // Trigger send (simulate Enter key)
+                    setTimeout(() => {
+                        const sendButton = document.querySelector('.stChatInput button');
+                        if (sendButton) sendButton.click();
+                    }, 100);
+                }
+            });
         });
     });
-});
-</script>
-""", unsafe_allow_html=True)
+    </script>
+    """, unsafe_allow_html=True)
 
 # -----------------------------
-# CHAT INPUT
+# CHAT INPUT (Only show if not admin page)
 # -----------------------------
-user_input = st.chat_input("Enter your message...")
+if not IS_ADMIN_PAGE:
+    user_input = st.chat_input("Enter your message...")
 
-if user_input:
-    # Display user message immediately
-    with st.chat_message("user"):
-        st.markdown(user_input)
-    
-    # Add to messages
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    
-    # Prepare knowledge prompt with instruction for simple doctor info
-    prompt = ""
-    if knowledge.strip():
-        prompt += f"Hospital Knowledge:\n{knowledge}\n\n"
-    
-    # Add instruction for simple formatting
-    prompt += f"Question: {user_input}\n\n"
-    prompt += "Important: When listing doctors and their schedules, use simple format like:\n"
-    prompt += "Dr. Usman Tariq - Available: 5:00 PM – 9:00 PM, Fee: 2,200 PKR\n"
-    prompt += "Dr. Farah Khan - Available: 10:00 AM – 1:00 PM, Fee: 2,400 PKR\n"
-    prompt += "Do NOT use markdown tables or table headers. Just list doctors with their details simply."
-    
-    # Generate assistant response
-    payload = {
-        "model": "nvidia/nemotron-3-nano-30b-a3b:free",
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a hospital customer support chatbot. "
-                    "Respond politely, clearly, and professionally. "
-                    "When listing doctors and their schedules, use simple plain text format. "
-                    "DO NOT use markdown tables or table headers. "
-                    "Just list each doctor with their timing and fee in a simple readable format."
-                )
-            },
-            {"role": "user", "content": prompt}
-        ],
-        "max_output_tokens": 350,
-        "temperature": 0.4
-    }
-    
-    try:
-        res = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json=payload,
-            timeout=30
-        )
-        data = res.json()
-        bot_reply = data["choices"][0]["message"]["content"].strip()
-        if not bot_reply:
+    if user_input:
+        # Display user message immediately
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        
+        # Add to messages
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        
+        # Prepare knowledge prompt with instruction for simple doctor info
+        prompt = ""
+        if knowledge.strip():
+            prompt += f"Hospital Knowledge:\n{knowledge}\n\n"
+        
+        # Add instruction for simple formatting
+        prompt += f"Question: {user_input}\n\n"
+        prompt += "Important: When listing doctors and their schedules, use simple format like:\n"
+        prompt += "Dr. Usman Tariq - Available: 5:00 PM – 9:00 PM, Fee: 2,200 PKR\n"
+        prompt += "Dr. Farah Khan - Available: 10:00 AM – 1:00 PM, Fee: 2,400 PKR\n"
+        prompt += "Do NOT use markdown tables or table headers. Just list doctors with their details simply."
+        
+        # Generate assistant response
+        payload = {
+            "model": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a hospital customer support chatbot. "
+                        "Respond politely, clearly, and professionally. "
+                        "When listing doctors and their schedules, use simple plain text format. "
+                        "DO NOT use markdown tables or table headers. "
+                        "Just list each doctor with their timing and fee in a simple readable format."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ],
+            "max_output_tokens": 350,
+            "temperature": 0.4
+        }
+        
+        try:
+            res = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout=30
+            )
+            data = res.json()
+            bot_reply = data["choices"][0]["message"]["content"].strip()
+            if not bot_reply:
+                bot_reply = random.choice(FALLBACK_MESSAGES)
+        except Exception as e:
+            print(f"Error: {e}")
             bot_reply = random.choice(FALLBACK_MESSAGES)
-    except Exception as e:
-        print(f"Error: {e}")
-        bot_reply = random.choice(FALLBACK_MESSAGES)
-    
-    # Format the response to ensure simple doctor info
-    bot_reply = format_simple_doctor_info(bot_reply)
-    
-    # Display assistant message with typing effect
-    with st.chat_message("assistant"):
-        if '<div class="doctor-schedule">' in bot_reply:
-            # For HTML formatted content, don't use typing effect
-            st.markdown(bot_reply, unsafe_allow_html=True)
-            animated = bot_reply
-        else:
-            animated = typing_effect(bot_reply)
-    
-    # Add assistant message to history
-    st.session_state.messages.append({"role": "assistant", "content": animated})
-    
-    # Add to chat history and save
-    st.session_state.chat_history.append((user_input, animated, datetime.now()))
-    save_chat_history()
-    
-    # Force rerun to update UI
-    st.rerun()
-
-# Display admin link at bottom
-st.markdown("""
-<div style="text-align: center; margin-top: 20px; max-width: 420px; margin-left: auto; margin-right: auto;">
-<small>
-<a href="/?admin=true" style="color: #666; text-decoration: none;">🔐 Admin Panel</a>
-</small>
-</div>
-""", unsafe_allow_html=True)
+        
+        # Format the response to ensure simple doctor info
+        bot_reply = format_simple_doctor_info(bot_reply)
+        
+        # Display assistant message with typing effect
+        with st.chat_message("assistant"):
+            if '<div class="doctor-schedule">' in bot_reply:
+                # For HTML formatted content, don't use typing effect
+                st.markdown(bot_reply, unsafe_allow_html=True)
+                animated = bot_reply
+            else:
+                animated = typing_effect(bot_reply)
+        
+        # Add assistant message to history
+        st.session_state.messages.append({"role": "assistant", "content": animated})
+        
+        # Add to chat history and save
+        st.session_state.chat_history.append((user_input, animated, datetime.now()))
+        save_chat_history()
+        
+        # Force rerun to update UI
+        st.rerun()
